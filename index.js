@@ -69,6 +69,20 @@ async function fetchProducts() {
     
   } catch (error) {
     console.error(`[${new Date().toISOString()}] API hatası:`, error.message);
+    
+    // Detaylı hata bilgisi
+    if (error.response) {
+      console.error('=== API HATA DETAYLARI ===');
+      console.error('Status:', error.response.status);
+      console.error('Status Text:', error.response.statusText);
+      console.error('Response Headers:', JSON.stringify(error.response.headers, null, 2));
+      console.error('Response Data:', JSON.stringify(error.response.data, null, 2));
+      console.error('Request URL:', error.config?.url);
+      console.error('Request Params:', JSON.stringify(error.config?.params, null, 2));
+      console.error('Request Headers:', JSON.stringify(error.config?.headers, null, 2));
+      console.error('========================');
+    }
+    
     throw error;
   }
 }
