@@ -158,7 +158,7 @@ function generateXml(products) {
     xml += `    <AnaGrup_Ad><![CDATA[${item.categoryLevel2Name || ''}]]></AnaGrup_Ad>\n`;
     xml += `    <AltGrup_Ad><![CDATA[${item.categoryLevel4Name || ''}]]></AltGrup_Ad>\n`;
     xml += `    <Kod>${escapeXml(prod.productID || '')}</Kod>\n`;
-    xml += `    <Ad><![CDATA[${prod.name || ''}]]></Ad>\n`;
+    xml += `    <Ad><![CDATA[${prod.description || ''}]]></Ad>\n`;
     xml += `    <UrunGrubu><![CDATA[${prod.materialGroupValue || ''}]]></UrunGrubu>\n`;
     xml += `    <UrunGrubuKodu>${escapeXml(prod.materialGroupID || '')}</UrunGrubuKodu>\n`;
     xml += `    <Doviz>${escapeXml(price.endUserPriceCurrency || price.customerPriceCurreny || 'USD')}</Doviz>\n`;
