@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const { create } = require('xmlbuilder2');
+const fs = require('fs');
+const path = require('path');
 
 // ENV değişkenlerini al
 const config = {
@@ -19,7 +21,8 @@ const config = {
   productId: process.env.PRODUCT_ID || '',
   updateDate: process.env.UPDATE_DATE || '',
   page: process.env.PAGE ? parseInt(process.env.PAGE) : null,
-  pageSize: process.env.PAGE_SIZE ? parseInt(process.env.PAGE_SIZE) : null
+  pageSize: process.env.PAGE_SIZE ? parseInt(process.env.PAGE_SIZE) : null,
+  debugApi: process.env.DEBUG_API === 'true'
 };
 
 // Global XML cache
@@ -135,77 +138,63 @@ async function makeApiRequest(requestBody) {
 
 /**
  * Ürünleri XML formatına dönüştürür (Entegra formatı - Stok attribute yapısı)
+ * Manuel XML oluşturma - her element ayrı satırda
  */
 function generateXml(products) {
-  const root = create({ version: '1.0', encoding: 'UTF-8' })
-    .ele('Products');
+  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<Products>\n';
   
   for (const item of products) {
     const prod = item.product || {};
     const price = item.price || {};
     
-    // Boyut formatı: "66,0h x 32,0w" şeklinde
-    const width = prod.width || '';
-    const length = prod.length || '';
-    let boyut = '';
-    if (length || width) {
-      boyut = `${length || '0'}h x ${width || '0'}w`;
-    }
-    
-    // Miktar formatı: "0" veya "200+" gibi
-    let miktar = prod.qty || '0';
-    if (parseInt(miktar) >= 200) {
-      miktar = '200+';
-    }
-    
-    // Stok elementi - tüm veriler attribute olarak
-    root.ele('Stok', {
-      'UstGrup_Kod': item.categoryLevel1 || '',
-      'UstGrup_Ad': item.categoryLevel1Name || '',
-      'AnaGrup_Kod': item.categoryLevel2 || '',
-      'AnaGrup_Ad': item.categoryLevel2Name || '',
-      'AltGrup_Kod': item.categoryLevel4 || '',
-      'AltGrup_Ad': item.categoryLevel4Name || '',
-      'Kod': prod.productID || '',
-      'Ad': prod.name || '',
-      'UrunGrubu': prod.materialGroupValue || '',
-      'UrunGrubuKodu': prod.materialGroupID || '',
-      'Doviz': price.endUserPriceCurrency || price.customerPriceCurreny || 'USD',
-      'Fiyat_SKullanici': formatPrice(price.endUserPrice),
-      'Fiyat_Bayi': formatPrice(price.customerPrice),
-      'Fiyat_Ozel': formatPrice(price.specialPrice),
-      'Miktar': miktar,
-      'Garanti': String(prod.warranty || ''),
-      'Marka': prod.exMaterialGroupID || '',
-      'MarkaIsim': prod.exMaterialGroupValue || '',
-      'Vergi': String(prod.vatRate || ''),
-      'Desi': prod.volume || '',
-      'UreticiKod': prod.producerPartNo || '',
-      'UreticiBarkodNo': prod.ean || '',
-      'Eski_Kod': prod.oldProductID || '',
-      'Boyut': boyut,
-      'Boyut_Birim': (length || width) ? 'cm' : '',
-      'Net_Agirlik': prod.netWeight || '',
-      'Brut_Agirlik': prod.grossWeight || '',
-      'Mensei': prod.origin || '',
-      'OzelKategori': prod.shopCategories || '',
-      'Ozel_Stok': String(prod.specialStock || '0'),
-      'IskontoYuzde': price.discountPercentage ? String(price.discountPercentage) : ''
-    });
+    xml += '  <Product>\n';
+    xml += `    <UstGrup_Ad><![CDATA[${item.categoryLevel1Name || ''}]]></UstGrup_Ad>\n`;
+    xml += `    <AnaGrup_Ad><![CDATA[${item.categoryLevel2Name || ''}]]></AnaGrup_Ad>\n`;
+    xml += `    <AltGrup_Ad><![CDATA[${item.categoryLevel4Name || ''}]]></AltGrup_Ad>\n`;
+    xml += `    <Kod>${escapeXml(prod.productID || '')}</Kod>\n`;
+    xml += `    <Ad><![CDATA[${prod.name || ''}]]></Ad>\n`;
+    xml += `    <UrunGrubu><![CDATA[${prod.materialGroupValue || ''}]]></UrunGrubu>\n`;
+    xml += `    <UrunGrubuKodu>${escapeXml(prod.materialGroupID || '')}</UrunGrubuKodu>\n`;
+    xml += `    <Doviz>${escapeXml(price.endUserPriceCurrency || price.customerPriceCurreny || 'USD')}</Doviz>\n`;
+    xml += `    <Fiyat_SKullanici>${price.endUserPrice != null ? Number(price.endUserPrice).toFixed(2) : ''}</Fiyat_SKullanici>\n`;
+    xml += `    <Fiyat_Bayi>${price.customerPrice != null ? Number(price.customerPrice).toFixed(2) : ''}</Fiyat_Bayi>\n`;
+    xml += `    <Fiyat_Ozel>${price.specialPrice != null ? Number(price.specialPrice).toFixed(2) : ''}</Fiyat_Ozel>\n`;
+    xml += `    <Miktar>${escapeXml(prod.qty || '0')}</Miktar>\n`;
+    xml += `    <Marka>${escapeXml(prod.exMaterialGroupID || '')}</Marka>\n`;
+    xml += `    <MarkaIsim><![CDATA[${prod.exMaterialGroupValue || ''}]]></MarkaIsim>\n`;
+    xml += `    <Vergi>${prod.vatRate != null ? prod.vatRate : ''}</Vergi>\n`;
+    xml += `    <UreticiBarkodNo>${escapeXml(prod.ean || '')}</UreticiBarkodNo>\n`;
+    xml += '  </Product>\n';
   }
   
-  return root.end({ prettyPrint: true });
+  xml += '</Products>';
+  return xml;
 }
 
 /**
- * Fiyatı formatlı string'e çevirir (örn: "3963.00")
+ * OzelKategori alanını temizler - sadece virgüllerden oluşuyorsa boş döner
  */
-function formatPrice(price) {
-  if (price === null || price === undefined) return '';
-  const num = parseFloat(price);
-  if (isNaN(num)) return '';
-  return num.toFixed(2);
+function cleanOzelKategori(value) {
+  if (!value) return '';
+  // Sadece virgüllerden oluşuyorsa boş döndür
+  const cleaned = String(value).replace(/,/g, '').trim();
+  return cleaned === '' ? '' : String(value);
 }
+
+/**
+ * XML için özel karakterleri escape eder
+ */
+function escapeXml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 
 /**
  * XML'i günceller
@@ -213,6 +202,14 @@ function formatPrice(price) {
 async function updateXml() {
   try {
     const products = await fetchProducts();
+    
+    // Debug: API cevabını txt dosyasına kaydet (sadece DEBUG_API=true ise)
+    if (config.debugApi) {
+      const debugPath = path.join(__dirname, 'debug-api-response.txt');
+      fs.writeFileSync(debugPath, JSON.stringify(products, null, 2), 'utf8');
+      console.log(`[DEBUG] API cevabı kaydedildi: ${debugPath}`);
+    }
+    
     cachedXml = generateXml(products);
     lastUpdateTime = new Date();
     console.log(`[${lastUpdateTime.toISOString()}] XML başarıyla güncellendi.`);
