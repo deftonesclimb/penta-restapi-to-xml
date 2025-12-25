@@ -148,6 +148,11 @@ function generateXml(products) {
     const prod = item.product || {};
     const price = item.price || {};
     
+    // Toplam stok: qty (2001) + dış depo (2011)
+    const baseStock = parseInt(prod.qty, 10) || 0;
+    const externalStock = getExternalStock(item.storageStocks);
+    const totalStock = baseStock + externalStock;
+    
     xml += '  <Product>\n';
     xml += `    <UstGrup_Ad><![CDATA[${item.categoryLevel1Name || ''}]]></UstGrup_Ad>\n`;
     xml += `    <AnaGrup_Ad><![CDATA[${item.categoryLevel2Name || ''}]]></AnaGrup_Ad>\n`;
@@ -160,7 +165,7 @@ function generateXml(products) {
     xml += `    <Fiyat_SKullanici>${price.endUserPrice != null ? Number(price.endUserPrice).toFixed(2) : ''}</Fiyat_SKullanici>\n`;
     xml += `    <Fiyat_Bayi>${price.customerPrice != null ? Number(price.customerPrice).toFixed(2) : ''}</Fiyat_Bayi>\n`;
     xml += `    <Fiyat_Ozel>${price.specialPrice != null ? Number(price.specialPrice).toFixed(2) : ''}</Fiyat_Ozel>\n`;
-    xml += `    <Miktar>${escapeXml(prod.qty || '0')}</Miktar>\n`;
+    xml += `    <Miktar>${totalStock}</Miktar>\n`;
     xml += `    <Marka>${escapeXml(prod.exMaterialGroupID || '')}</Marka>\n`;
     xml += `    <MarkaIsim><![CDATA[${prod.exMaterialGroupValue || ''}]]></MarkaIsim>\n`;
     xml += `    <Vergi>${prod.vatRate != null ? prod.vatRate : ''}</Vergi>\n`;
@@ -170,6 +175,24 @@ function generateXml(products) {
   
   xml += '</Products>';
   return xml;
+}
+
+/**
+ * storageStocks dizisinden 2011 (dış depo) stoğunu alır
+ */
+function getExternalStock(storageStocks) {
+  if (!storageStocks || !Array.isArray(storageStocks)) return 0;
+  
+  for (const storage of storageStocks) {
+    if (storage.storagePlace === '2011') {
+      // "200+" gibi değerleri işle
+      const stockStr = String(storage.stock || '0').replace('+', '');
+      const stockNum = parseInt(stockStr, 10);
+      return isNaN(stockNum) ? 0 : stockNum;
+    }
+  }
+  
+  return 0;
 }
 
 /**
