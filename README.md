@@ -5,11 +5,27 @@ Penta bayi sisteminin REST API'sinden ürünleri çekip, Entegra entegrasyon sis
 ## Özellikler
 
 - ✅ Penta REST API'den ürün verisi çekme
-- ✅ Otomatik XML oluşturma
+- ✅ Entegra uyumlu XML formatı oluşturma
+- ✅ Otomatik sayfalama (tüm sayfaları çeker)
 - ✅ Belirli aralıklarla otomatik güncelleme
 - ✅ HTTP sunucusu ile XML serve etme
 - ✅ Sabit URL ile her zaman güncel XML
+- ✅ Birden fazla kategori desteği
 - ✅ Tüm ayarlar `.env` dosyasından yönetim
+- ✅ Debug modu (API yanıtlarını dosyaya kaydetme)
+
+## Proje Yapısı
+
+```
+├── index.js              # Ana XML servis uygulaması
+├── package.json          # Bağımlılıklar
+├── .env.example          # Örnek ortam değişkenleri
+├── .env                  # Ortam değişkenleri (oluşturulmalı)
+└── brands-viewer/        # Marka listesi görüntüleme aracı
+    ├── index.js
+    ├── package.json
+    └── .env.example
+```
 
 ## Kurulum
 
@@ -34,22 +50,25 @@ cp .env.example .env
 PENTA_API_URL=https://api.penta.com.tr/api/products
 PENTA_API_TOKEN=your_token_here
 
-# Güncelleme Aralığı (dakika)
+# Güncelleme Aralığı (dakika cinsinden)
 UPDATE_INTERVAL_MINUTES=30
 
-# Sunucu Port
+# Sunucu Ayarları
 SERVER_PORT=3000
 
-# API Parametreleri
-FIELDS_KEY=all-fields          # all-fields, only-price, only-stock
-PRODUCT_TYPE=1                  # 1=XML, 2=Lisans, 3=XML+Lisans
-STOCK=true                      # true veya false
-CATEGORY=13003007001,13003007002  # Virgülle ayrılmış kategori kodları
-BRAND=                          # Marka kodu
-PRODUCT_ID=                     # Ürün ID
-UPDATE_DATE=                    # Format: D.MM.YYYY
-PAGE=                           # Sayfa numarası
-PAGE_SIZE=                      # Sayfa boyutu
+# API Request Parametreleri
+FIELDS_KEY=all-fields          # all-fields, only-price, only-stock (opsiyonel)
+PRODUCT_TYPE=1                  # 1=XML, 2=Lisans, 3=XML+Lisans (zorunlu)
+STOCK=true                      # true veya false (opsiyonel)
+CATEGORY=                       # Virgülle ayrılmış kategori kodları (opsiyonel)
+BRAND=                          # Marka kodu (opsiyonel)
+PRODUCT_ID=                     # Ürün ID (opsiyonel)
+UPDATE_DATE=                    # Format: D.MM.YYYY (opsiyonel)
+PAGE=                           # Sayfa numarası (opsiyonel)
+PAGE_SIZE=                      # Sayfa boyutu (opsiyonel)
+
+# Debug: API cevabını txt dosyasına kaydet
+DEBUG_API=false
 ```
 
 ## Çalıştırma
@@ -96,7 +115,7 @@ nssm install PentaXmlService
 
 | Endpoint | Method | Açıklama |
 |----------|--------|----------|
-| `/` | GET | Servis ana sayfası |
+| `/` | GET | Servis ana sayfası (HTML) |
 | `/products.xml` | GET | Ürün XML'i (Entegra için bu URL'i kullanın) |
 | `/status` | GET | Servis durumu (JSON) |
 | `/refresh` | POST | Manuel XML güncelleme |
@@ -115,30 +134,98 @@ veya sunucu IP'si ile:
 http://SUNUCU_IP:3000/products.xml
 ```
 
-## XML Yapısı
+## XML Yapısı (Entegra Formatı)
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<Products generatedAt="2024-12-24T20:00:00.000Z" totalCount="150">
+<Products>
   <Product>
-    <ProductId>210000655</ProductId>
-    <ProductName>Örnek Ürün</ProductName>
-    <Price>100.00</Price>
-    <Stock>50</Stock>
-    <Category>13003007001</Category>
-    <Brand>MHM100</Brand>
-    <!-- ... diğer alanlar API yanıtına göre ... -->
+    <UstGrup_Ad><![CDATA[Kategori Seviye 1]]></UstGrup_Ad>
+    <AnaGrup_Ad><![CDATA[Kategori Seviye 2]]></AnaGrup_Ad>
+    <AltGrup_Ad><![CDATA[Kategori Seviye 4]]></AltGrup_Ad>
+    <Kod>URUN_KODU</Kod>
+    <Ad><![CDATA[Ürün Adı]]></Ad>
+    <UrunGrubu><![CDATA[Malzeme Grubu]]></UrunGrubu>
+    <UrunGrubuKodu>MGK001</UrunGrubuKodu>
+    <Doviz>USD</Doviz>
+    <Fiyat_SKullanici>100.00</Fiyat_SKullanici>
+    <Fiyat_Bayi>85.00</Fiyat_Bayi>
+    <Fiyat_Ozel>80.00</Fiyat_Ozel>
+    <Miktar>50</Miktar>
+    <Marka>MRK001</Marka>
+    <MarkaIsim><![CDATA[Marka Adı]]></MarkaIsim>
+    <Vergi>20</Vergi>
+    <UreticiBarkodNo>1234567890123</UreticiBarkodNo>
   </Product>
-  <!-- ... diğer ürünler ... -->
 </Products>
 ```
+
+### XML Alan Açıklamaları
+
+| Alan | Açıklama |
+|------|----------|
+| `UstGrup_Ad` | Kategori Seviye 1 adı |
+| `AnaGrup_Ad` | Kategori Seviye 2 adı |
+| `AltGrup_Ad` | Kategori Seviye 4 adı |
+| `Kod` | Ürün kodu (productID) |
+| `Ad` | Ürün adı |
+| `UrunGrubu` | Malzeme grubu değeri |
+| `UrunGrubuKodu` | Malzeme grubu kodu |
+| `Doviz` | Para birimi (USD, EUR, TRY vb.) |
+| `Fiyat_SKullanici` | Son kullanıcı fiyatı |
+| `Fiyat_Bayi` | Bayi fiyatı |
+| `Fiyat_Ozel` | Özel fiyat |
+| `Miktar` | Stok miktarı |
+| `Marka` | Marka kodu |
+| `MarkaIsim` | Marka adı |
+| `Vergi` | KDV oranı |
+| `UreticiBarkodNo` | EAN/Barkod numarası |
+
+---
+
+## Marka Listesi Görüntüleyici (brands-viewer)
+
+Penta API'deki marka listesini web arayüzünde görüntülemek için ayrı bir yardımcı araç.
+
+### Kurulum
+
+```bash
+cd brands-viewer
+npm install
+cp .env.example .env
+# .env dosyasını düzenleyin
+```
+
+### Çalıştırma
+
+```bash
+npm start
+```
+
+### Endpoint'ler
+
+| Endpoint | Method | Açıklama |
+|----------|--------|----------|
+| `/` | GET | Marka listesi (HTML - arama özellikli) |
+| `/api/brands` | GET | Marka listesi (JSON) |
+
+---
 
 ## Notlar
 
 - XML her zaman aynı URL'den sunulur, içerik otomatik güncellenir
 - Güncelleme sırasında eski XML serve edilmeye devam eder
 - API hatası durumunda son başarılı XML cache'de tutulur
-- Birden fazla kategori virgülle ayrılarak belirtilebilir
+- Birden fazla kategori virgülle ayrılarak belirtilebilir (her kategori için ayrı istek atılır)
+- Sayfalama otomatik çalışır, tüm sayfalar çekilir
+- `DEBUG_API=true` ile API yanıtları `debug-api-response.txt` dosyasına kaydedilir
+
+## Bağımlılıklar
+
+- **express** - HTTP sunucusu
+- **axios** - HTTP istekleri
+- **dotenv** - Ortam değişkenleri yönetimi
+- **xmlbuilder2** - XML oluşturma
 
 ## Lisans
 
